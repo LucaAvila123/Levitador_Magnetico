@@ -4,6 +4,24 @@
 //Carrega a biblioteca do sensor ultrassonico
 #include <Ultrasonic.h>
 
+/*** Carrega as bibliotecas e definições para as funções da interface gráfica no InfluxDB ***/
+#include <WiFiMulti.h>
+WiFiMulti wifiMulti;
+#include <InfluxDbClient.h>
+#include <InfluxDbCloud.h>
+// WiFi AP SSID
+#define WIFI_SSID "SSID"
+// WiFi password
+#define WIFI_PASSWORD "PASSWORD"
+// URL do influxdb
+#define INFLUXDB_URL "http://localhost:8086"
+#define INFLUXDB_TOKEN "WAHU2NA34uJI9rWKQEiNPUT-yomPtcNGGr8IDzG-s_7aYWgzYC3RbHIev5RdluRGNpMC__hNuMSkdVlyUXDJLQ=="
+#define INFLUXDB_ORG "myorg"
+#define INFLUXDB_BUCKET "Levitador Magnetico"
+InfluxDBClient client(INFLUXDB_URL, INFLUXDB_ORG, INFLUXDB_BUCKET, INFLUXDB_TOKEN, InfluxDbCloud2CACert);
+Point results("Control variables");
+/*** Terminadas as definições ***/
+
 //Define os pinos para o trigger e echo
 #define pino_trigger 4
 #define pino_echo 5
@@ -19,6 +37,34 @@ int controle, Kp = 110, Kd;
 void setup()
 {
   Serial.begin(9600);
+  /*** Valores setados da interface gráfica ***/
+  // Setup wifi
+  WiFi.mode(WIFI_STA);
+  wifiMulti.addAP(WIFI_SSID, WIFI_PASSWORD);
+
+  Serial.print("Connecting to wifi");
+  while (wifiMulti.run() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(100);
+  }
+  Serial.println();
+
+  // Add tags
+  results.addTag("Tag1", "Kp");
+  results.addTag("Tag2", "Kd");
+  results.addTag("Tag3", "erro");
+
+  // Check server connection
+  if (client.validateConnection()) {
+    Serial.print("Connected to InfluxDB: ");
+    Serial.println(client.getServerUrl());
+  } else {
+    Serial.print("InfluxDB connection failed: ");
+    Serial.println(client.getLastErrorMessage());
+  }
+
+  /*** Terminado de setar os valores da interface gráfica ***/
+
   Serial.println("Lendo dados do sensor...");
   pinMode(3, OUTPUT);
   pinMode(A0, INPUT);
@@ -32,6 +78,10 @@ void setup()
 
 void loop()
 {
+
+  // limpar o buffer da parte da interface gráfica
+  // results.clearFields();
+
   Kd = analogRead(A3) / 8;
   Kp = analogRead(A0) / 4;
   soma = 0;
@@ -53,9 +103,22 @@ void loop()
   //Serial.print("Media de distancia em cm: ");
   Serial.print("Kd: ");
   Serial.print(Kd);
+  if (!client.writePoint(Kd)) {
+    Serial.print("InfluxDB write failed: ");
+    Serial.println(client.getLastErrorMessage());
+  }
   Serial.print(" Kp: ");
   Serial.println(Kp);
+  if (!client.writePoint(Kp)) {
+    Serial.print("InfluxDB write failed: ");
+    Serial.println(client.getLastErrorMessage());
+  }
   //OCR2B = analogRead(A0) / 4;
   erroPrev = erro;
+
+  if (!client.writePoint(erro)) {
+    Serial.print("InfluxDB write failed: ");
+    Serial.println(client.getLastErrorMessage());
+  }
   delay(50);
 }
